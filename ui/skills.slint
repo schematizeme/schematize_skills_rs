@@ -1,0 +1,232 @@
+import { LineEdit, ScrollView } from "std-widgets.slint";
+
+// Janela do schematize-skills. Casca visual fina: todos os dados vêm do binário
+// `schematize-skills` (headless), por `--json`, e as ações que escrevem abrem TERMINAL.
+//
+// O TEMA e o `Btn` são cópia das janelas irmãs. Isso é PLATAFORMA (D4): não sabem o que é
+// tabela, coluna ou FK — sabem cor, borda e clique. Se um dia algo de domínio migrar para cá,
+// o corte foi feito errado.
+
+global Th {
+    in-out property <bool> dark: true;
+    out property <color> bg:          dark ? #14161c : #e8ecf4;
+    out property <color> surface:     dark ? #1b1e27 : #ffffff;
+    out property <color> surface-2:   dark ? #222634 : #dce3f0;
+    out property <color> border:      dark ? #2b3040 : #bfc9dc;
+    out property <color> text:        dark ? #e6e9f2 : #12151d;
+    out property <color> text-dim:    dark ? #8a90a2 : #475062;
+    out property <color> accent:      #5b8cff;
+    out property <color> accent-soft: dark ? #2a3a66 : #cedcff;
+    out property <color> good:        #3ecf8e;
+    out property <color> warn:        #e6b23a;
+    out property <color> header-fg:   dark ? #9db4ff : #2b48bd;
+}
+
+component Btn inherits Rectangle {
+    in property <string> label;
+    in property <bool> primary: false;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 38px;
+    border-radius: 9px;
+    border-width: primary ? 0px : 1px;
+    border-color: Th.border;
+    background: !enabled ? Th.surface-2
+        : primary ? (touch.has-hover ? #6f9bff : Th.accent)
+        : (touch.has-hover ? Th.accent-soft : Th.surface);
+    opacity: enabled ? 1.0 : 0.5;
+    animate background { duration: 120ms; }
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        Text {
+            text: label;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+            color: primary ? #ffffff : Th.text;
+            font-size: 13.5px;
+            font-weight: 600;
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { root.clicked(); }
+    }
+}
+
+export struct SkillUI {
+    slug: string,
+    categoria: string,
+    verificada: bool,
+    // O SLUG do estado, nunca a frase: `em_dia`, `tem_atualizacao`, `nao_instalada`, `fork`.
+    // A janela desenha a cor e a palavra a partir dele — casar texto traduzido é o defeito que
+    // fez uma tela irmã devolver vazio nos outros dezenove idiomas.
+    situacao: string,
+    instalada: string,
+    ultima: string,
+    recomenda: string,
+    // Calculados no Rust, com teste. Reimplementá-los aqui criaria duas leis para o mesmo fato.
+    e-instalada: bool,
+    tem-atualizacao: bool,
+    e-fork: bool,
+}
+
+// Uma skill do catálogo.
+component Ficha inherits Rectangle {
+    in property <SkillUI> s;
+    callback instalar();
+    callback atualizar();
+    callback comparar();
+    border-radius: 10px;
+    border-width: 1px;
+    // A BORDA sinaliza antes da leitura: quem varre a lista vê a moldura primeiro.
+    border-color: s.tem-atualizacao ? Th.accent : (s.e-fork ? Th.warn : Th.border);
+    background: Th.surface;
+    height: corpo.preferred-height;
+    corpo := VerticalLayout {
+        padding: 12px;
+        spacing: 5px;
+        HorizontalLayout {
+            spacing: 8px;
+            Text { text: s.slug; font-size: 14px; font-weight: 800; color: Th.text; }
+            if s.verificada: Text {
+                text: "verificada";
+                font-size: 11px;
+                font-weight: 700;
+                color: Th.good;
+                vertical-alignment: center;
+            }
+            Text { text: s.categoria; font-size: 11.5px; color: Th.text-dim; vertical-alignment: center; }
+            Rectangle { horizontal-stretch: 1; }
+            Text {
+                text: s.e-instalada ? "v" + s.instalada : "não instalada";
+                font-size: 12px;
+                color: s.e-instalada ? Th.text : Th.text-dim;
+                vertical-alignment: center;
+            }
+        }
+        // Os TRÊS estados que pedem ação têm frases próprias. Um "atualizar" genérico em cima
+        // de um fork ofereceria apagar o trabalho de quem editou.
+        if s.tem-atualizacao: Text {
+            text: "v" + s.ultima + " disponível";
+            font-size: 12px;
+            font-weight: 700;
+            color: Th.accent;
+        }
+        if s.e-fork: Text {
+            text: "FORK editado — compare antes de mesclar; atualizar apagaria o que você mudou";
+            font-size: 12px;
+            font-weight: 700;
+            color: Th.warn;
+            wrap: word-wrap;
+        }
+        if s.recomenda != "": Text {
+            text: "recomenda junto: " + s.recomenda;
+            font-size: 11.5px;
+            color: Th.text-dim;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            // As três MUDAM a máquina (baixam, descompactam, sobrescrevem): vão para o
+            // TERMINAL (D6), onde o que roda aparece antes de rodar.
+            if !s.e-instalada: Btn { label: "Instalar"; clicked => { root.instalar(); } }
+            if s.tem-atualizacao: Btn { label: "Atualizar"; primary: true; clicked => { root.atualizar(); } }
+            if s.e-fork: Btn { label: "Comparar"; clicked => { root.comparar(); } }
+            Rectangle { horizontal-stretch: 1; }
+        }
+    }
+}
+
+export component MainWindow inherits Window {
+    title: "schematize · skills";
+    preferred-width: 900px;
+    preferred-height: 680px;
+    min-width: 640px;
+    min-height: 480px;
+    background: Th.bg;
+
+    in-out property <bool> dark <=> Th.dark;
+    // 0 = Catálogo · 1 = Instaladas
+    in-out property <int> aba: 0;
+    in-out property <string> versao: "—";
+
+    in-out property <[SkillUI]> skills;
+    in-out property <string> resumo;
+    in-out property <string> erro;
+    in-out property <string> msg;
+
+    callback recarregar();
+    callback alternar-tema();
+    callback instalar(string);
+    callback atualizar(string);
+    callback comparar(string);
+    callback nova-skill();
+
+    VerticalLayout {
+        padding: 18px;
+        spacing: 12px;
+
+        HorizontalLayout {
+            spacing: 10px;
+            VerticalLayout {
+                Text { text: "Skills"; color: Th.header-fg; font-size: 20px; font-weight: 800; }
+                Text { text: root.versao; font-size: 11.5px; color: Th.text-dim; }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Btn { label: "Catálogo"; primary: root.aba == 0; clicked => { root.aba = 0; } }
+            Btn { label: "Instaladas"; primary: root.aba == 1; clicked => { root.aba = 1; } }
+            Btn { label: root.dark ? "☾" : "☀"; clicked => { root.alternar-tema(); } }
+        }
+
+        Rectangle { height: 1px; background: Th.border; }
+
+        if root.erro != "": Rectangle {
+            height: le.preferred-height + 16px;
+            border-radius: 9px;
+            border-width: 1px;
+            border-color: Th.warn;
+            background: Th.surface;
+            le := HorizontalLayout {
+                padding: 8px;
+                Text { text: root.erro; font-size: 12.5px; color: Th.warn; wrap: word-wrap; }
+            }
+        }
+        if root.msg != "": Text { text: root.msg; font-size: 12px; color: Th.good; wrap: word-wrap; }
+
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: root.resumo;
+                font-size: 12.5px;
+                font-weight: 700;
+                color: Th.text;
+                vertical-alignment: center;
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Btn { label: "Criar skill"; clicked => { root.nova-skill(); } }
+            Btn { label: "Reler"; clicked => { root.recarregar(); } }
+        }
+
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 8px;
+                // A aba Instaladas é a MESMA lista, filtrada. Duas listas seriam dois lugares
+                // para consertar quando a ficha mudar.
+                for s in root.skills: Rectangle {
+                    height: root.aba == 0 || s.e-instalada ? f.preferred-height : 0px;
+                    clip: true;
+                    f := Ficha {
+                        s: s;
+                        width: parent.width;
+                        instalar => { root.instalar(s.slug); }
+                        atualizar => { root.atualizar(s.slug); }
+                        comparar => { root.comparar(s.slug); }
+                    }
+                }
+            }
+        }
+    }
+}

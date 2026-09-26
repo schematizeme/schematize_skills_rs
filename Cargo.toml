@@ -16,7 +16,11 @@ path = "src/main.rs"
 # UM repo, DOIS binários (ADR-0020). A janela sai do MESMO commit que o CLI, então não há
 # `git clone` no release, nem pino cruzado para envelhecer, nem CI compilando contra uma versão
 # diferente da que o release usa — as três classes de falha que o repo de janela separado custou.
-# A JANELA entra no M4 desta fase — o `[[bin]]` dela nasce junto com o `src/gui/main.rs`.
+# UM repo, DOIS binários (ADR-0020). A janela sai do MESMO commit que o CLI: sem `git clone` no
+# release, sem pino cruzado envelhecendo, sem CI compilando contra outra versão.
+[[bin]]
+name = "schematize-skills-gui"
+path = "src/gui/main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }

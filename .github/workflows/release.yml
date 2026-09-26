@@ -13,11 +13,7 @@ name: release
 # essa defasagem que quebrou o `curl | bash` de todo mundo. O optimizer repetiu a lacuna em
 # menor escala (tinha CI e nenhum release). Aqui a tag É a publicação, desde o primeiro dia.
 #
-# A JANELA entra no M4 desta fase, e sairá DAQUI MESMO (ADR-0020) — o bloco de asset dela entra
-# junto com o `src/gui/main.rs`, no mesmo commit, e não antes: um asset declarado para um binário
-# que ainda não existe é o release "verde com um arquivo a menos" ao contrário.
-#
-# O que o ADR-0020 decide, e vale quando ela chegar: Ela é o segundo `[[bin]]` deste repo, então
+# A JANELA SAI DAQUI MESMO, e é o ponto do ADR-0020. Ela é o segundo `[[bin]]` deste repo, então
 # `cargo build --release` já a produz: **não há `git clone` de repo de janela neste arquivo**.
 #
 # Nos irmãos (market, optimizer, deployer) esse clone existe e é `continue-on-error` por desenho —
@@ -55,12 +51,14 @@ jobs:
       matrix:
         include:
           - runner: ubuntu-latest
-            asset: schematize-skills-linux-x86_64-x86_64
+            asset: schematize-skills-linux-x86_64
+            asset_gui: schematize-skills-gui-linux-x86_64-x86_64
           # `macos-15` e nao `macos-14`: a 14 ja esta marcada DEPRECATED no
           # `actions/runner-images` (issue 13518), a caminho do mesmo destino da 13 descrito
           # logo abaixo. Trocar antes de a imagem sumir custa esta linha.
           - runner: macos-15
-            asset: schematize-skills-macos-arm64-arm64
+            asset: schematize-skills-macos-arm64
+            asset_gui: schematize-skills-gui-macos-arm64-arm64
           # Intel CROSS-COMPILADO no runner arm64, e nao numa imagem macOS x64.
           #
           # A familia de imagens x64 do macOS e a que vem sendo aposentada, e o modo de falha
@@ -74,9 +72,11 @@ jobs:
           # E o mesmo desenho que o CLI, o updater e o market ja usam.
           - runner: macos-15
             target: x86_64-apple-darwin
-            asset: schematize-skills-macos-x86_64-x86_64
+            asset: schematize-skills-macos-x86_64
+            asset_gui: schematize-skills-gui-macos-x86_64-x86_64
           - runner: windows-latest
-            asset: schematize-skills-windows-x86_64.exe-x86_64.exe
+            asset: schematize-skills-windows-x86_64.exe
+            asset_gui: schematize-skills-gui-windows-x86_64.exe-x86_64.exe
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -124,10 +124,14 @@ jobs:
           dir="target/${{ matrix.target }}/release"
           [ -n "${{ matrix.target }}" ] || dir="target/release"
           if [ "${{ runner.os }}" = "Windows" ]; then
-            cp "$dir/schematize-skills.exe" "${{ matrix.asset }}"
+            cp "$dir/schematize-skills.exe"     "${{ matrix.asset }}"
+            cp "$dir/schematize-skills-gui.exe" "${{ matrix.asset_gui }}"
           else
-            cp "$dir/schematize-skills" "${{ matrix.asset }}"
+            cp "$dir/schematize-skills"     "${{ matrix.asset }}"
+            cp "$dir/schematize-skills-gui" "${{ matrix.asset_gui }}"
           fi
+          # **Sem `|| true` em nenhum dos `cp`.** Janela que não compilou tem de reprovar o
+          # job: publicar o CLI sem a janela é o release "verde com um asset a menos".
           # **Sem `|| true` em nenhum dos `cp`, e é deliberado.** Janela que não compilou tem de
           # reprovar o job: publicar o CLI sem a janela é o release "verde com um asset a menos"
           # que este repo foi desenhado para não repetir.
@@ -136,4 +140,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
-        run: gh release upload "${GITHUB_REF_NAME}" "${{ matrix.asset }}" --clobber
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" \
+            "${{ matrix.asset }}" "${{ matrix.asset_gui }}" --clobber
