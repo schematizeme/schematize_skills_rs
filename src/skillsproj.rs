@@ -147,6 +147,11 @@ pub fn desatualizadas(root: &Path) -> Vec<(String, String, String)> {
 /// o projeto do zero), e o registro da nova versão sai por comando NO FIM — só depois
 /// de o trabalho existir. Marcar antes diria "aplicado" sobre algo que talvez tenha
 /// falhado no meio, e o próximo a olhar confiaria numa mentira.
+///
+/// **`bin` é o binário do `schematize-skills`**, e os comandos do prompt são os DELE: até o E5 o
+/// `bin` era o hub e a marca saía como `{bin} skills applied`, forma que o app extraído não
+/// aceita — o agente terminaria o trabalho e falharia justamente no registro. O `overdev add`
+/// não é deste app, então sai pelo hub (`schematize`), que continua dono dele.
 pub fn prompt_rerun(bin: &str, alvos: &[(String, String, String)]) -> String {
     let lista: Vec<String> = alvos
         .iter()
@@ -155,7 +160,7 @@ pub fn prompt_rerun(bin: &str, alvos: &[(String, String, String)]) -> String {
         })
         .collect();
     let marcas: Vec<String> =
-        alvos.iter().map(|(s, _, _)| format!("  {bin} skills applied --mark {s}")).collect();
+        alvos.iter().map(|(s, _, _)| format!("  {bin} applied --mark {s}")).collect();
     format!(
         "Este projeto foi moldado por versões ANTIGAS de skills que desde então evoluíram.\n\
          Sua tarefa é ATUALIZAR os preceitos do projeto para a versão atual de cada uma.\n\
@@ -168,7 +173,7 @@ pub fn prompt_rerun(bin: &str, alvos: &[(String, String, String)]) -> String {
          3. aplique SÓ o que divergiu. Isto é uma atualização, não uma reescrita — não\n\
             refaça o que já está de acordo, e não troque decisões que o projeto tomou\n\
             de propósito;\n\
-         4. se algo exigir uma decisão humana, registre com `{bin} overdev add \"...\"`\n\
+         4. se algo exigir uma decisão humana, registre com `schematize overdev add \"...\"`\n\
             em vez de decidir sozinho.\n\
          \n\
          AO TERMINAR cada skill, e só então, registre:\n\
@@ -210,6 +215,19 @@ mod tests {
     fn versao_diferente_e_diferente_nos_dois_sentidos() {
         let e = comparar(Some(&ap("0.30.0")), Some("0.20.0"));
         assert!(matches!(e, Some(Estado::Desatualizada { .. })));
+    }
+
+    /// **Os comandos do prompt existem no binário que os recebe.** `skills applied` era a forma
+    /// do hub; no `schematize-skills` o subcomando é `applied` direto, e o agente falharia no
+    /// registro final — depois de ter feito o trabalho.
+    #[test]
+    fn prompt_usa_comandos_do_app_de_skills() {
+        let alvos = vec![("web".to_string(), "1.0.0".to_string(), "1.1.0".to_string())];
+        let p = prompt_rerun("/bin/schematize-skills", &alvos);
+        assert!(p.contains("/bin/schematize-skills applied --mark web"), "{p}");
+        assert!(!p.contains("schematize-skills skills applied"), "forma do hub não serve ao app");
+        assert!(!p.contains("/bin/schematize-skills overdev"), "overdev não é deste app");
+        assert!(p.contains("schematize overdev add"));
     }
 
     /// Ida e volta no disco, e o registro sobrevive a reescrita.

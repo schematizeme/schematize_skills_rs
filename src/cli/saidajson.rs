@@ -126,6 +126,87 @@ pub fn status(json: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// **O quê:** `applied --json` — qual VERSÃO de skill moldou ESTE projeto, e o que ficou para
+/// trás.
+///
+/// **Onde:** o hub, na caixa de entrada do overdev: ele mostra "N skills evoluíram desde que
+/// moldaram este projeto" e oferece reaplicar.
+///
+/// **O `prompt` vem PRONTO no documento**, e isso é deliberado. Ele é o texto que o agente
+/// recebe para reaplicar as skills, e montá-lo do lado de quem lê faria duas versões do mesmo
+/// prompt — a que divergisse mandaria o agente atualizar preceitos com instruções velhas. É a
+/// mesma razão de o `refaz_text` do optimizer vir pronto.
+pub fn aplicadas() -> Result<(), String> {
+    let raiz = std::env::current_dir().map_err(|e| format!("cwd inacessível: {e}"))?;
+    let atrasadas = skills_casa::skillsproj::desatualizadas(&raiz);
+    let bin = std::env::current_exe()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| "schematize-skills".into());
+    let itens: Vec<String> = atrasadas
+        .iter()
+        .map(|(slug, aplicada, instalada)| {
+            format!(
+                "{{\"slug\":\"{}\",\"aplicada\":\"{}\",\"instalada\":\"{}\"}}",
+                esc(slug),
+                esc(aplicada),
+                esc(instalada)
+            )
+        })
+        .collect();
+    let prompt = if atrasadas.is_empty() {
+        String::new()
+    } else {
+        skills_casa::skillsproj::prompt_rerun(&bin, &atrasadas)
+    };
+    println!(
+        "{{\"raiz\":\"{}\",\"atrasadas\":[{}],\"prompt\":\"{}\"}}",
+        esc(&raiz.display().to_string()),
+        itens.join(","),
+        esc(&prompt)
+    );
+    Ok(())
+}
+
+/// **O quê:** `acoes --json` — os botões que as skills instaladas declaram.
+///
+/// **Onde:** o hub, na aba do projeto: cada ação vira um botão ao lado de «Executar overdev».
+///
+/// ## É o ÚNICO ponto em que software de TERCEIRO declara UI aqui dentro
+///
+/// Uma skill publica um `gui.json` com `label`, `command` e `needs_project`, e espera um botão.
+/// O contrato é da SKILL com o ecossistema, não deste app com o hub — e por isso o formato tem
+/// de ter **um leitor só**. Enquanto o hub lia os arquivos por conta própria, uma mudança no
+/// formato pedia dois consertos, e o segundo só apareceria quando alguém reclamasse do botão
+/// que sumiu.
+///
+/// **`command` sai CRU, e o hub não o interpreta.** Ele é uma linha de comando escrita por
+/// terceiro; sanitizá-la aqui daria a falsa impressão de que ela foi validada, e o hub a
+/// executa num terminal onde a pessoa a vê antes de confirmar.
+pub fn acoes(json: bool) -> Result<(), String> {
+    let acoes = skills_casa::guiactions::gui_actions();
+    if !json {
+        for a in &acoes {
+            let p = if a.needs_project { " (precisa de projeto)" } else { "" };
+            println!("{:<10} {:<24} {}{p}", a.skill, a.label, a.command);
+        }
+        return Ok(());
+    }
+    let itens: Vec<String> = acoes
+        .iter()
+        .map(|a| {
+            format!(
+                "{{\"skill\":\"{}\",\"rotulo\":\"{}\",\"comando\":\"{}\",\"precisa_projeto\":{}}}",
+                esc(&a.skill),
+                esc(&a.label),
+                esc(&a.command),
+                a.needs_project
+            )
+        })
+        .collect();
+    println!("{{\"acoes\":[{}]}}", itens.join(","));
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

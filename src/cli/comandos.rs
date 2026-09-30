@@ -16,7 +16,7 @@ pub fn resolve(cat: &[registry::Item], names: &[String], all: bool) -> Vec<regis
 /// `schematize skills <sub>` — dispatcher da gestão de skills (a feature).
 pub fn executar(sub: Cmd) -> Result<(), String> {
     match sub {
-        Cmd::Applied { mark } => crate::cli::projeto::applied_cmd(mark),
+        Cmd::Applied { mark, json } => crate::cli::projeto::applied_cmd(mark, json),
         Cmd::Rerun { slug } => crate::cli::projeto::rerun_cmd(slug),
         Cmd::Install { names, all, with_recommended } => {
             skills_install(&names, all, with_recommended)
@@ -29,6 +29,7 @@ pub fn executar(sub: Cmd) -> Result<(), String> {
         Cmd::Fork { slug } => skills_fork(&slug),
         Cmd::Compare { slug } => skills_compare(&slug),
         Cmd::Status { json } => crate::cli::saidajson::status(json),
+        Cmd::Acoes { json } => crate::cli::saidajson::acoes(json),
         Cmd::Desktop { install, remover } => crate::cli::desktop::executar(install, remover),
     }
 }

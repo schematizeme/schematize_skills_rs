@@ -12,7 +12,10 @@ fn raiz() -> Result<PathBuf, String> {
 }
 
 /// Mostra o estado das skills NESTE projeto — ou registra uma como aplicada.
-pub fn applied_cmd(mark: Option<String>) -> Result<(), String> {
+pub fn applied_cmd(mark: Option<String>, json: bool) -> Result<(), String> {
+    if json && mark.is_none() {
+        return crate::cli::saidajson::aplicadas();
+    }
     let root = raiz()?;
     if let Some(slug) = mark {
         // A versão registrada é a INSTALADA agora: é ela que o agente acabou de aplicar.
