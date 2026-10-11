@@ -62,12 +62,36 @@ jobs:
       # real leria as contas de quem está rodando a suíte — e, pior, o `detect --add` as
       # ESCREVERIA. No CI isso passaria despercebido (o runner é limpo); na máquina de quem
       # desenvolve, cadastraria conta sem ninguém pedir.
+      # Aqui os testes moram nos módulos `#[cfg(test)]` de `src/` (não há `tests/` neste repo);
+      # `tests/` só entra na varredura se um dia existir. A região de teste de um arquivo de
+      # `src/` começa no 1º `#[cfg(test)]`; um arquivo de `tests/` é inteiro teste. Região de
+      # teste que LÊ o HOME real (`env::var("HOME")`, `home_dir`, `dirs::home`, `home()`) só passa
+      # se a MESMA região o SETA para um temporário (`set_var("HOME"` / `.env("HOME"`).
       - name: nenhum teste usa o HOME real
         run: |
-          ! grep -rn 'env::var("HOME")\|env::home_dir\|dirs::home' tests/ --include='*.rs' \
-            || { echo "::error::um teste está lendo o HOME real"; exit 1; }
-          grep -q 'env("HOME"' tests/json_e_contrato.rs \
-            || { echo "::error::os testes têm de SETAR o HOME para um temporário"; exit 1; }
+          set -u
+          LE='env::var(_os)?\("HOME"\)|home_dir|dirs::home|(^|[^_[:alnum:]])home\(\)'
+          SETA='set_var\("HOME"|\.env\("HOME"'
+          falhou=0
+          vistos=0
+          regiao() { # imprime só o código de teste do arquivo
+            case "$1" in
+              tests/*) cat "$1" ;;
+              *) awk '/#\[cfg\(test\)\]/ { t = 1 } t' "$1" ;;
+            esac
+          }
+          while IFS= read -r f; do
+            vistos=$((vistos + 1))
+            r=$(regiao "$f")
+            if printf '%s\n' "$r" | grep -Eq "$LE" && ! printf '%s\n' "$r" | grep -Eq "$SETA"; then
+              echo "::error file=$f::teste lê o HOME real sem SETAR o HOME para um temporário"
+              printf '%s\n' "$r" | grep -En "$LE" | head -5
+              falhou=1
+            fi
+          done < <(find src tests -name '*.rs' -type f 2>/dev/null | sort)
+          [ "$vistos" -gt 0 ] || { echo "::error::nenhum .rs varrido — a guarda ficou cega"; exit 1; }
+          echo "guarda do HOME: $vistos arquivos varridos"
+          exit "$falhou"
 
       - name: testes
         run: cargo test --all-targets
