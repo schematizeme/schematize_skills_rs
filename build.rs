@@ -70,6 +70,7 @@ fn main() {
     // A JANELA entra no M4 desta fase. Até lá não há `.slint`, e mandar o `slint_build` num
     // arquivo inexistente faria o BUILD DO CLI falhar por causa de uma tela que ainda não
     // existe — o app tem de ser útil antes de ter janela.
+    #[cfg(feature = "gui")]
     if std::path::Path::new("ui/skills.slint").exists() {
         slint_build::compile("ui/skills.slint").expect("compilar ui/skills.slint");
     }
