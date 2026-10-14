@@ -10,13 +10,14 @@
 //! esta pasta, o corte foi feito errado.
 
 pub mod agente;
-pub mod bin;
 pub mod caminhos;
 pub mod conta;
 pub mod desktop;
 pub mod icone;
 
-pub mod market_parasita;
 pub mod procedencia;
 pub mod rede;
 pub mod util;
+
+/// `home`/`resolve_bin` vivem na lib compartilhada (ADR-0026); o alias mantém `nucleo::bin::...` nos chamadores.
+pub use schematize_plataforma::bin;

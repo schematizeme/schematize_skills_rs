@@ -68,36 +68,10 @@ pub fn schematize_dir_at(root: &Path) -> PathBuf {
     root.join(DIRS_ACEITOS[0])
 }
 
-/// **O quê:** grava `conteudo` em `alvo` sem deixar arquivo pela metade.
-///
-/// **Onde:** o arquivo de skills do projeto, e o `state.json`.
-///
-/// ## O temporário é ÚNICO POR CHAMADA, e isso foi pago
-///
-/// Antes o nome era `.{alvo}.tmp-{pid}`: duas THREADS gravando o mesmo alvo usavam o MESMO
-/// temporário. A segunda truncava o arquivo da primeira, a primeira renomeava, e a segunda
-/// falhava com "No such file or directory" — em ~15% das rodadas. "Atômico" valia entre
-/// PROCESSOS; entre threads, não. O contador resolve os dois.
-pub fn escreve_atomico(alvo: &Path, conteudo: &str) -> Result<(), String> {
-    use std::io::Write;
-    let dir = alvo.parent().unwrap_or(Path::new("."));
-    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let tmp = dir.join(format!(
-        ".{}.tmp-{}-{n}",
-        alvo.file_name().and_then(|s| s.to_str()).unwrap_or("alvo"),
-        std::process::id()
-    ));
-    {
-        let mut f = std::fs::File::create(&tmp).map_err(|e| format!("{}: {e}", tmp.display()))?;
-        f.write_all(conteudo.as_bytes()).map_err(|e| format!("{}: {e}", tmp.display()))?;
-        // `sync_all` ANTES do rename: sem isto, um corte de energia entre os dois deixa o
-        // nome novo apontando para um arquivo de tamanho certo e conteúdo zerado.
-        f.sync_all().map_err(|e| format!("{}: {e}", tmp.display()))?;
-    }
-    std::fs::rename(&tmp, alvo).map_err(|e| format!("{}: {e}", alvo.display()))
-}
+/// Escrita atômica (temporário único + `sync_all` + `rename`): vem de `schematize_plataforma`
+/// (ADR-0026; esta função foi a origem da versão da lib). Usada pelo arquivo de skills do
+/// projeto e pelo `state.json`.
+pub use schematize_plataforma::arquivo::escreve_atomico;
 
 #[cfg(test)]
 mod tests {
@@ -121,35 +95,6 @@ mod tests {
         // Os dois existem: o canônico ganha.
         std::fs::create_dir_all(base.join(".schematize")).expect("cria");
         assert!(schematize_dir_at(&base).ends_with(".schematize"));
-        let _ = std::fs::remove_dir_all(&base);
-    }
-
-    /// **Escrita atômica não deixa arquivo pela metade, nem entre THREADS.**
-    ///
-    /// Vinte threads gravando o MESMO alvo: no fim, o conteúdo tem de ser um dos vinte
-    /// inteiro — nunca uma mistura, nunca vazio, e nenhuma escrita pode falhar. Com o
-    /// temporário por PID (sem o contador), este teste falhava em ~15% das rodadas.
-    #[test]
-    fn escrita_atomica_aguenta_threads_concorrentes() {
-        let base = std::env::temp_dir().join(format!("sk-atom-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
-        let alvo = base.join("x.json");
-        let esperados: Vec<String> = (0..20).map(|i| format!("conteudo-numero-{i:02}")).collect();
-        std::thread::scope(|s| {
-            for c in &esperados {
-                let alvo = alvo.clone();
-                s.spawn(move || escreve_atomico(&alvo, c).expect("nenhuma escrita pode falhar"));
-            }
-        });
-        let lido = std::fs::read_to_string(&alvo).expect("o arquivo existe");
-        assert!(esperados.contains(&lido), "conteúdo misturado ou parcial: {lido:?}");
-        // E nenhum temporário ficou para trás.
-        let sobras: Vec<_> = std::fs::read_dir(&base)
-            .expect("lê")
-            .filter_map(Result::ok)
-            .filter(|e| e.file_name().to_string_lossy().contains(".tmp-"))
-            .collect();
-        assert!(sobras.is_empty(), "{} temporário(s) órfão(s)", sobras.len());
         let _ = std::fs::remove_dir_all(&base);
     }
 }
