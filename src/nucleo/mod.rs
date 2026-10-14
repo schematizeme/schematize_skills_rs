@@ -16,6 +16,7 @@ pub mod conta;
 pub mod desktop;
 pub mod icone;
 
+pub mod market_parasita;
 pub mod procedencia;
 pub mod rede;
 pub mod util;
