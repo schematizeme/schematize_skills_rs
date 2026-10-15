@@ -63,12 +63,13 @@ pub fn item(
 ) -> String {
     format!(
         "{{\"slug\":\"{}\",\"dir\":\"{}\",\"repo\":\"{}\",\"categoria\":\"{}\",\
-         \"verificada\":{},\"recomenda\":[{}],\"situacao\":\"{}\",\"instalada\":{},\"ultima\":{}}}",
+         \"verificada\":{},\"core\":{},\"recomenda\":[{}],\"situacao\":\"{}\",\"instalada\":{},\"ultima\":{}}}",
         esc(&it.slug),
         esc(&it.skill_dir),
         esc(&it.repo),
         esc(&it.category),
         it.verified,
+        it.core,
         it.recommends.iter().map(|r| format!("\"{}\"", esc(r))).collect::<Vec<_>>().join(","),
         esc(situacao),
         opt(inst),
@@ -221,6 +222,7 @@ mod tests {
             sponsor: None,
             verified: true,
             recommends: vec!["engineering".into()],
+            core: false,
         }
     }
 

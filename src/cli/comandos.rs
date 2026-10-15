@@ -23,7 +23,7 @@ pub fn executar(sub: Cmd) -> Result<(), String> {
         }
         Cmd::Update { names, all } => skills_update(&names, all),
         Cmd::List { json } => skills_list(json),
-        Cmd::Remove { name } => skills_remove(&name),
+        Cmd::Remove { name, force_core } => skills_remove(&name, force_core),
         Cmd::New { slug, name, desc, force } => skills_new(&slug, name, desc, force),
         Cmd::Edit { slug, list, file, set_from } => skills_edit(&slug, list, file, set_from),
         Cmd::Fork { slug } => skills_fork(&slug),
@@ -120,6 +120,9 @@ pub fn skills_edit(
 pub fn skills_install(names: &[String], all: bool, with_recommended: bool) -> Result<(), String> {
     let cat = registry::catalog();
     let selected = resolve(&cat, names, all);
+    // A skill PADRÃO (engineering) entra sempre — instalar `rust` sozinha deixaria o agente sem
+    // o núcleo de orquestração.
+    garantir_core(&cat, &selected);
     for it in &selected {
         match skills::install(it) {
             Ok(v) => println!("✓ {} instalado v{v}", it.slug),
@@ -160,19 +163,60 @@ pub fn skills_install(names: &[String], all: bool, with_recommended: bool) -> Re
             }
         }
     }
+    aplicar_nucleo();
     Ok(())
+}
+
+/// Instala as skills PADRÃO (`core`) que ainda faltam e não estão em `ja`. Best-effort: falha
+/// de uma vira aviso, não derruba o comando.
+fn garantir_core(cat: &[registry::Item], ja: &[registry::Item]) {
+    for it in registry::core_items(cat) {
+        if ja.iter().any(|s| s.slug == it.slug) || skills::installed_version(&it).is_some() {
+            continue;
+        }
+        match skills::install(&it) {
+            Ok(v) => println!("✓ {} instalado v{v} (skill padrão)", it.slug),
+            Err(e) => eprintln!("✗ {} (skill padrão): {e}", it.slug),
+        }
+    }
+}
+
+/// Aplica o núcleo sempre-on chamando o hub (`schematize core install`). Best-effort e MUDO sem
+/// o hub: o app das skills funciona sozinho, e o `schematize doctor --fix` corrige depois.
+fn aplicar_nucleo() {
+    let home = skills_casa::nucleo::util::home();
+    let mut cands = vec![
+        home.join(".cargo/bin/schematize"),
+        home.join(".local/bin/schematize"),
+        std::path::PathBuf::from("/usr/local/bin/schematize"),
+        std::path::PathBuf::from("/usr/bin/schematize"),
+    ];
+    if let Ok(path) = std::env::var("PATH") {
+        cands.extend(std::env::split_paths(&path).map(|d| d.join("schematize")));
+    }
+    let Some(bin) = cands.into_iter().find(|p| p.is_file()) else { return };
+    match std::process::Command::new(bin).args(["core", "install"]).status() {
+        Ok(st) if st.success() => {}
+        Ok(_) => {
+            eprintln!("aviso: `schematize core install` falhou — rode `schematize doctor --fix`.")
+        }
+        Err(_) => {}
+    }
 }
 
 /// Atualiza skills instaladas pro latest (todas se não passar nome/--all). Skills FORKADAS
 /// não são sobrescritas — `skills::update` recusa e aponta o caminho comparar/mesclar.
 pub fn skills_update(names: &[String], all: bool) -> Result<(), String> {
     let cat = registry::catalog();
-    for it in resolve(&cat, names, all) {
-        match skills::update(&it) {
+    let selected = resolve(&cat, names, all);
+    garantir_core(&cat, &selected);
+    for it in &selected {
+        match skills::update(it) {
             Ok(v) => println!("✓ {} → v{v}", it.slug),
             Err(e) => eprintln!("✗ {}: {e}", it.slug),
         }
     }
+    aplicar_nucleo();
     Ok(())
 }
 
@@ -198,10 +242,19 @@ pub fn skills_list(json: bool) -> Result<(), String> {
 }
 
 /// Remove uma skill instalada.
-pub fn skills_remove(name: &str) -> Result<(), String> {
+pub fn skills_remove(name: &str, force_core: bool) -> Result<(), String> {
     let cat = registry::catalog();
     match registry::find(&cat, name) {
-        Some(it) => skills::remove(&it).map(|_| println!("removido: {}", it.slug)),
+        Some(it) => {
+            let r = if force_core { skills::remove_forcado(&it) } else { skills::remove(&it) };
+            if force_core && it.core {
+                eprintln!(
+                    "aviso: {} era skill PADRÃO — o núcleo sempre-on deixa de ser atualizado.",
+                    it.slug
+                );
+            }
+            r.map(|_| println!("removido: {}", it.slug))
+        }
         None => Err(format!("skill desconhecida: {name}")),
     }
 }

@@ -169,9 +169,26 @@ pub fn install(it: &Item) -> Result<String, String> {
     Ok(version)
 }
 
-/// Remove uma skill instalada: apaga os comandos achatados dela (nomes `<slug>-*` únicos),
-/// a pasta da skill e o registro no estado. Uninstall completo.
+/// Remove uma skill instalada — RECUSA as skills padrão (`core`).
+///
+/// **Onde:** `schematize-skills remove` e a janela. A engineering carrega o núcleo sempre-on;
+/// removê-la deixaria o CLAUDE.md global apontando para uma skill que não existe mais. Quem
+/// precisa mesmo usa [`remove_forcado`] (`--force-core`).
 pub fn remove(it: &Item) -> Result<(), String> {
+    if it.core {
+        return Err(format!(
+            "{} é skill PADRÃO da casa (núcleo sempre-on) e não pode ser removida. Se você tem \
+             certeza, use `schematize-skills remove {} --force-core` — o agente volta a ignorar \
+             as regras de orquestração até reinstalá-la.",
+            it.slug, it.slug
+        ));
+    }
+    remove_forcado(it)
+}
+
+/// Remove uma skill instalada: apaga os comandos achatados dela (nomes `<slug>-*` únicos),
+/// a pasta da skill e o registro no estado. Uninstall completo, SEM checar `core`.
+pub fn remove_forcado(it: &Item) -> Result<(), String> {
     let dest = skills_dir().join(&it.skill_dir);
     // Apaga os comandos desta skill de ~/.claude/commands ANTES de remover a pasta
     // (a lista de nomes vem de assets/commands da própria skill; nomes são globalmente únicos).

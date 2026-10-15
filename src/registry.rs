@@ -45,6 +45,10 @@ pub struct Item {
     /// e exposto pra GUI ler depois. `#[serde(default)]` = catálogo antigo (sem o campo) ainda parseia.
     #[serde(default)]
     pub recommends: Vec<String>,
+    /// skill PADRÃO/obrigatória: instalada sempre (install/update/bootstrap) e não removível sem
+    /// `--force-core`. Ausente no catálogo = `false` (catálogo antigo continua parseando).
+    #[serde(default)]
+    pub core: bool,
 }
 
 #[derive(Deserialize)]
@@ -67,6 +71,8 @@ fn builtin() -> Vec<Item> {
         sponsor,
         verified: true,
         recommends: recommends.iter().map(|s| s.to_string()).collect(),
+        // A engineering é o núcleo sempre-on da casa: padrão e obrigatória.
+        core: slug == "engineering",
     };
     // Toda skill de LINGUAGEM recomenda a "engineering" (a skill BASE complementar).
     let lang = ["engineering"];
@@ -120,4 +126,41 @@ pub fn find(cat: &[Item], slug: &str) -> Option<Item> {
 /// URL do release "latest" (sempre a última versão publicada da skill).
 pub fn latest_zip_url(it: &Item) -> String {
     format!("https://github.com/{ORG}/{}/releases/latest/download/{}", it.repo, it.zip)
+}
+
+/// As skills PADRÃO (`core`) do catálogo — as que nunca podem faltar numa máquina.
+pub fn core_items(cat: &[Item]) -> Vec<Item> {
+    cat.iter().filter(|i| i.core).cloned().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn campo_core_ausente_e_false() {
+        let c: Catalog = serde_json::from_str(
+            r#"{"skills":[{"slug":"a","skill_dir":"schematize-a","repo":"skill-a","zip":"a.zip"},
+                {"slug":"b","skill_dir":"schematize-b","repo":"skill-b","zip":"b.zip","core":true}]}"#,
+        )
+        .unwrap();
+        assert!(!c.skills[0].core);
+        assert!(c.skills[1].core);
+    }
+
+    #[test]
+    fn fallback_embutido_marca_so_a_engineering_como_core() {
+        let cat = builtin();
+        let core = core_items(&cat);
+        assert_eq!(core.len(), 1);
+        assert_eq!(core[0].slug, "engineering");
+    }
+
+    /// `remove` recusa a skill padrão ANTES de tocar em qualquer arquivo (o erro orienta a flag).
+    #[test]
+    fn remove_recusa_skill_core() {
+        let eng = core_items(&builtin()).remove(0);
+        let e = crate::skills::remove(&eng).unwrap_err();
+        assert!(e.contains("--force-core"), "{e}");
+    }
 }

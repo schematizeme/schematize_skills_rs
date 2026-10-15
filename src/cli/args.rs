@@ -63,8 +63,13 @@ pub enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// Remove an installed skill.
-    Remove { name: String },
+    /// Remove an installed skill (default skills like engineering need --force-core).
+    Remove {
+        name: String,
+        /// Remove even a DEFAULT skill (engineering). The agent loses the always-on core.
+        #[arg(long)]
+        force_core: bool,
+    },
     /// Create a new skill scaffold in ~/.claude/skills/schematize-<slug>/.
     New {
         /// slug (allow-list [a-z0-9-]) — vira a pasta schematize-<slug>.
