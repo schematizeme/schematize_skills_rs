@@ -3,25 +3,21 @@
 //! verdade), pra skills novas aparecerem SEM recompilar/relançar a CLI. Se a rede
 //! falhar, cai no catálogo embutido. Onde: consultado por install/update/list/agent/gui.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Org GitHub que hospeda o catálogo e as skills.
 pub const ORG: &str = "schematizeme";
 
-/// Índice remoto (raw do repo da CLI, branch main) — editar/commitar = catálogo novo.
-const CATALOG_URL: &str =
-    "https://raw.githubusercontent.com/schematizeme/schematize-cli/main/catalog.json";
-
 /// Autor/co-autor da skill (mostrado na GUI): a pessoa/organização por trás (credibilidade).
 /// Só nome + link — quem quiser verificar a firma vai ao site do parceiro (o `url`). Sem doc.
-#[derive(Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Sponsor {
     pub name: String,
     pub url: String,
 }
 
 /// Uma skill/tool instalável do ecossistema.
-#[derive(Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Item {
     /// slug curto (o que o usuário digita): "engineering", "seo", ...
     pub slug: String,
@@ -51,6 +47,7 @@ pub struct Item {
     pub core: bool,
 }
 
+#[cfg(test)]
 #[derive(Deserialize)]
 struct Catalog {
     skills: Vec<Item>,
@@ -103,19 +100,36 @@ fn builtin() -> Vec<Item> {
     ]
 }
 
-/// O catálogo atual: tenta o índice remoto; cai no embutido se falhar/vazio.
+/// O catálogo atual: SHA de `main` → raw de `main` anti-cache → cache local → embutido.
+/// Ver [`crate::catalogo`].
 pub fn catalog() -> Vec<Item> {
-    if let Ok(body) = crate::nucleo::util::run(
-        "curl",
-        &["-sfL", "-m", "8", "-H", "User-Agent: schematize-cli", CATALOG_URL],
-    ) {
-        if let Ok(c) = serde_json::from_str::<Catalog>(&body) {
-            if !c.skills.is_empty() {
-                return c.skills;
-            }
-        }
+    crate::catalogo::carregar(
+        &crate::catalogo::Curl,
+        ORG,
+        &crate::catalogo::caminho_cache(),
+        crate::nucleo::util::now_unix(),
+        false,
+        &builtin,
+    )
+    .itens
+}
+
+/// Resolve os slugs PEDIDOS pelo usuário. Slug fora do catálogo = busca de novo (ignorando o
+/// TTL do cache) e, se continuar fora, `Err` claro. `names` vazio devolve o catálogo todo.
+pub fn resolver(names: &[String]) -> Result<(Vec<Item>, Vec<Item>), String> {
+    if names.is_empty() {
+        let c = catalog();
+        return Ok((c.clone(), c));
     }
-    builtin()
+    crate::catalogo::resolver(
+        &crate::catalogo::Curl,
+        ORG,
+        &crate::catalogo::caminho_cache(),
+        crate::nucleo::util::now_unix(),
+        names,
+        &builtin,
+    )
+    .map(|(c, sel)| (c.itens, sel))
 }
 
 /// Resolve um slug dentro de um catálogo (clona o Item).

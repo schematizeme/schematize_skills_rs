@@ -15,6 +15,7 @@
 
 pub mod nucleo;
 
+pub mod catalogo;
 pub mod guiactions;
 pub mod mercado;
 pub mod registry;

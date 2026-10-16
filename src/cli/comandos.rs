@@ -5,12 +5,17 @@ use crate::cli::args::Cmd;
 use skills_casa::mercado;
 use skills_casa::{registry, skilledit, skills};
 
-pub fn resolve(cat: &[registry::Item], names: &[String], all: bool) -> Vec<registry::Item> {
-    if all || names.is_empty() {
-        cat.to_vec()
-    } else {
-        names.iter().filter_map(|n| registry::find(cat, n)).collect()
+/// Seleção de skills para install/update. `--all` ou sem nomes = o catálogo todo; com nomes,
+/// slug desconhecido é ERRO (rc≠0) depois de uma segunda busca — nunca um "ok" silencioso.
+pub fn resolve(
+    names: &[String],
+    all: bool,
+) -> Result<(Vec<registry::Item>, Vec<registry::Item>), String> {
+    if all {
+        let c = registry::catalog();
+        return Ok((c.clone(), c));
     }
+    registry::resolver(names)
 }
 
 /// `schematize skills <sub>` — dispatcher da gestão de skills (a feature).
@@ -118,15 +123,18 @@ pub fn skills_edit(
 
 /// Instala skills (ou todas com --all) e, opcionalmente, as recomendadas.
 pub fn skills_install(names: &[String], all: bool, with_recommended: bool) -> Result<(), String> {
-    let cat = registry::catalog();
-    let selected = resolve(&cat, names, all);
+    let (cat, selected) = resolve(names, all)?;
     // A skill PADRÃO (engineering) entra sempre — instalar `rust` sozinha deixaria o agente sem
     // o núcleo de orquestração.
     garantir_core(&cat, &selected);
+    let mut falhas = 0;
     for it in &selected {
         match skills::install(it) {
             Ok(v) => println!("✓ {} instalado v{v}", it.slug),
-            Err(e) => eprintln!("✗ {}: {e}", it.slug),
+            Err(e) => {
+                falhas += 1;
+                eprintln!("✗ {}: {e}", it.slug)
+            }
         }
     }
     // Recomendações (skill BASE complementar). Nunca instala de surpresa:
@@ -164,6 +172,9 @@ pub fn skills_install(names: &[String], all: bool, with_recommended: bool) -> Re
         }
     }
     aplicar_nucleo();
+    if falhas > 0 {
+        return Err(format!("{falhas} skill(s) não instalada(s) — veja as mensagens acima"));
+    }
     Ok(())
 }
 
@@ -207,16 +218,24 @@ fn aplicar_nucleo() {
 /// Atualiza skills instaladas pro latest (todas se não passar nome/--all). Skills FORKADAS
 /// não são sobrescritas — `skills::update` recusa e aponta o caminho comparar/mesclar.
 pub fn skills_update(names: &[String], all: bool) -> Result<(), String> {
-    let cat = registry::catalog();
-    let selected = resolve(&cat, names, all);
+    let (cat, selected) = resolve(names, all)?;
     garantir_core(&cat, &selected);
+    let mut falhas = 0;
     for it in &selected {
         match skills::update(it) {
             Ok(v) => println!("✓ {} → v{v}", it.slug),
-            Err(e) => eprintln!("✗ {}: {e}", it.slug),
+            Err(e) => {
+                falhas += 1;
+                eprintln!("✗ {}: {e}", it.slug)
+            }
         }
     }
     aplicar_nucleo();
+    // Pedir skills pelo nome e elas falharem é falha do comando; `update` sem nome (todas) tolera
+    // forks recusados, que são o comportamento esperado.
+    if falhas > 0 && !names.is_empty() && !all {
+        return Err(format!("{falhas} skill(s) não atualizada(s) — veja as mensagens acima"));
+    }
     Ok(())
 }
 
@@ -243,20 +262,17 @@ pub fn skills_list(json: bool) -> Result<(), String> {
 
 /// Remove uma skill instalada.
 pub fn skills_remove(name: &str, force_core: bool) -> Result<(), String> {
-    let cat = registry::catalog();
-    match registry::find(&cat, name) {
-        Some(it) => {
-            let r = if force_core { skills::remove_forcado(&it) } else { skills::remove(&it) };
-            if force_core && it.core {
-                eprintln!(
-                    "aviso: {} era skill PADRÃO — o núcleo sempre-on deixa de ser atualizado.",
-                    it.slug
-                );
-            }
-            r.map(|_| println!("removido: {}", it.slug))
-        }
-        None => Err(format!("skill desconhecida: {name}")),
+    // Slug desconhecido: segunda busca e erro claro (rc≠0) — ver `registry::resolver`.
+    let (_, sel) = registry::resolver(&[name.to_string()])?;
+    let it = sel.into_iter().next().ok_or_else(|| format!("skill desconhecida: {name}"))?;
+    let r = if force_core { skills::remove_forcado(&it) } else { skills::remove(&it) };
+    if force_core && it.core {
+        eprintln!(
+            "aviso: {} era skill PADRÃO — o núcleo sempre-on deixa de ser atualizado.",
+            it.slug
+        );
     }
+    r.map(|_| println!("removido: {}", it.slug))
 }
 
 /// **O quê:** a linha humana de uma skill: slug, versão, última, e o estado por extenso.
