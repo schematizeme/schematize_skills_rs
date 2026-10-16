@@ -22,6 +22,9 @@ use clap::{Parser, Subcommand};
                   Works standalone; the schematize hub delegates its Skills tab to it."
 )]
 pub struct Cli {
+    /// Under `sudo`, install for ROOT instead of the real user (same as SCHEMATIZE_ALLOW_ROOT=1).
+    #[arg(long = "para-root", global = true)]
+    pub para_root: bool,
     #[command(subcommand)]
     pub cmd: Cmd,
 }

@@ -206,7 +206,14 @@ fn aplicar_nucleo() {
         cands.extend(std::env::split_paths(&path).map(|d| d.join("schematize")));
     }
     let Some(bin) = cands.into_iter().find(|p| p.is_file()) else { return };
-    match std::process::Command::new(bin).args(["core", "install"]).status() {
+    // O filho age no MESMO usuário: HOME explícito, e sem `SUDO_USER` se o escape está ligado.
+    let alvo = skills_casa::nucleo::usuario::alvo();
+    let mut cmd = std::process::Command::new(bin);
+    cmd.args(["core", "install"]).env("HOME", &alvo.home);
+    if alvo.usuario.is_none() {
+        cmd.env_remove("SUDO_USER").env_remove("SUDO_UID").env_remove("SUDO_GID");
+    }
+    match cmd.status() {
         Ok(st) if st.success() => {}
         Ok(_) => {
             eprintln!("aviso: `schematize core install` falhou — rode `schematize doctor --fix`.")

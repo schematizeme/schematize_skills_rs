@@ -6,7 +6,7 @@
 //! GRAVAR; esta camada sabe o que a pessoa pediu na linha de comando e o que responder. Um
 //! núcleo que lê flag seria um núcleo que não dá para chamar de outro lugar.
 
-use skills_casa::nucleo::{bin, desktop};
+use skills_casa::nucleo::desktop;
 
 /// **O quê:** executa `--install` ou `--remover`, e imprime o que aconteceu.
 ///
@@ -23,7 +23,7 @@ pub fn executar(install: bool, remover: bool) -> Result<(), String> {
     if install && remover {
         return Err("`--install` e `--remover` juntos não têm leitura óbvia — escolha um".into());
     }
-    let home = bin::home().ok_or("não consegui descobrir o seu diretório home")?;
+    let home = skills_casa::nucleo::util::home();
 
     if remover {
         return match desktop::remover(&home)? {

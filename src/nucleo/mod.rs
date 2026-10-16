@@ -17,6 +17,7 @@ pub mod icone;
 
 pub mod procedencia;
 pub mod rede;
+pub mod usuario;
 pub mod util;
 
 /// `home`/`resolve_bin` vivem na lib compartilhada (ADR-0026); o alias mantém `nucleo::bin::...` nos chamadores.

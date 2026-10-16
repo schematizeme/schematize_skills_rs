@@ -25,6 +25,11 @@ use std::process::Command;
 /// processo, que é estado global — e testes de Rust rodam em paralelo, roubando-o uns dos
 /// outros.
 pub fn home() -> PathBuf {
+    // Sob `sudo`, o HOME é o do usuário real (ver `super::usuario`), não o `/root`.
+    let a = super::usuario::alvo();
+    if a.usuario.is_some() {
+        return a.home;
+    }
     let ler = |k: &str| {
         std::env::var_os(k).filter(|v| !v.is_empty()).map(|v| v.to_string_lossy().into_owned())
     };

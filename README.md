@@ -23,3 +23,9 @@ Skill é conteúdo de **terceiro**: qualquer pessoa publica uma, e o contrato de
 (um botão declarado no `SKILL.md`) é software de fora. Um domínio que aceita extensão de terceiro
 tem ciclo próprio de release — prendê-lo ao ciclo do hub faz um conserto de catálogo esperar por
 um conserto de janela.
+
+## Rodando com `sudo`
+
+Sob `sudo`, o app detecta o usuário real (`SUDO_USER`, HOME do `/etc/passwd`), instala nele e
+devolve a posse do que criou; avisa em uma linha. Para instalar para o root de propósito, use
+`--para-root` ou `SCHEMATIZE_ALLOW_ROOT=1`.
